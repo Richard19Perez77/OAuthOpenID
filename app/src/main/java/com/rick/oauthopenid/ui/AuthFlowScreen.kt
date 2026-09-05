@@ -183,7 +183,7 @@ private fun ConfigCard(state: FlowUiState, viewModel: AuthFlowViewModel) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = "No client secret: this app is a public client, so PKCE proves it " +
-                            "started the flow instead.",
+                                "started the flow instead.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (config.issuer == OidcConfig.DEMO.issuer) {
@@ -412,12 +412,12 @@ private fun FooterCard() {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "Only the one-time code travels through the browser. Tokens are fetched " +
-                    "over a direct HTTPS call, so they never appear in a URL, browser history " +
-                    "or a server log.\n\n" +
-                    "The flow is hand-written here so every value is visible. Production apps " +
-                    "should use a maintained library — the easy-to-miss details are exactly the " +
-                    "ones that turn into vulnerabilities.\n\n" +
-                    "See README.md and OVERVIEW.md in the repo for the full walkthrough.",
+                        "over a direct HTTPS call, so they never appear in a URL, browser history " +
+                        "or a server log.\n\n" +
+                        "The flow is hand-written here so every value is visible. Production apps " +
+                        "should use a maintained library — the easy-to-miss details are exactly the " +
+                        "ones that turn into vulnerabilities.\n\n" +
+                        "See README.md and OVERVIEW.md in the repo for the full walkthrough.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

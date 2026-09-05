@@ -38,10 +38,19 @@ data class OidcConfig(
 }
 
 /**
- * The subset of the provider's discovery document we actually use.
  *
- * Fetching this instead of hardcoding endpoints means the same code works against any
- * OIDC provider, and keeps working when a provider moves an endpoint.
+ *  OIDC discovery document
+ *      issuer: canonical issuer UrL; must match ID-token iss
+ *      authorization_endpoint: Browser sign-in URL
+ *      tokenEndpoint: HTTPS POST for code exchange and refresh
+ *      jwksUri: public keys for id-token signatures
+ *      userInfoEndpoint: optional API access token
+ *      endSessionEndpoint: optional unused in the happy path
+ *      rawJson: entire JSON document
+ *
+ *  Caching this data avoids hitting well-known on every tap.
+ *      Persisting means redirects after Android killed app still POST to right token endpoint.
+ *
  */
 data class ProviderMetadata(
     val issuer: String,

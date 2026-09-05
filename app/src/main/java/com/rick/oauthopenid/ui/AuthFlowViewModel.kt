@@ -120,10 +120,25 @@ class AuthFlowViewModel(
         persistConfig(updated)
     }
 
-    /** Steps 1–3: discover, generate the per-request secrets, and build the authorize URL. */
+    /**
+     *
+     * Steps 1–3:
+     *      Discover, generate the per-request secrets
+     *      build the authorize URL.
+     *
+     *      find provider
+     *      mint PKCE/state/nonce
+     *      build the authorize URL
+     *      have UI open browser
+     *      will not wait for user to come back
+     *          this is onRedirect in onNewIntent
+     */
     fun beginSignIn() {
-        if (uiState.busy) return
+        if (uiState.busy) return // one sign in at a time only
+
         viewModelScope.launch {
+
+            // reset everything
             uiState = FlowUiState(config = uiState.config, busy = true)
             metadata = null
             jwks = null
@@ -131,6 +146,7 @@ class AuthFlowViewModel(
             tokens = null
             clearPersistedAuthSession()
 
+            // step 1 is discovery
             val config = uiState.config
             setStatus(Steps.DISCOVERY, StepStatus.Running)
             val discovered = try {
@@ -162,6 +178,7 @@ class AuthFlowViewModel(
                 return@launch
             }
 
+            // step 2 pkce, state, and nonce created and persisted
             val request = client.buildAuthorizationRequest(discovered, config)
             pendingRequest = request
             persistPendingRequest(request)
@@ -186,6 +203,7 @@ class AuthFlowViewModel(
                 fields = listOf(StepField("Authorization URL", request.url)),
             )
 
+            // step 3 authorize url and give to browser
             uiState = uiState.copy(busy = false, launchAuthorizationUrl = request.url)
         }
     }
@@ -227,6 +245,8 @@ class AuthFlowViewModel(
         }
 
         viewModelScope.launch {
+
+            // step 4. REDIRECT browser came back; read code state error with CSRF check
             uiState = uiState.copy(busy = true)
             setStatus(Steps.REDIRECT, StepStatus.Running)
 
@@ -274,6 +294,7 @@ class AuthFlowViewModel(
                 ),
             )
 
+            // step 5 TOKEN post code and pkce verifier -> tokens
             setStatus(Steps.TOKEN, StepStatus.Running)
             val tokenResponse = try {
                 client.exchangeCode(discovered, uiState.config, code, request.codeVerifier)
@@ -310,6 +331,9 @@ class AuthFlowViewModel(
                 }
             }
 
+            // step 6 ID_TOKEN split base 64 the jwt only, not trusted yet
+            // step 7 VALIDATE in decode and validate, signature and JWKS
+            //      then iss / aud / exp / nonce
             val validated = decodeAndValidateIdToken(tokenResponse, request, discovered)
             // One-time secrets are spent once the redirect is handled; drop them either way.
             clearPersistedAuthSession()
@@ -335,6 +359,11 @@ class AuthFlowViewModel(
     }
 
     /**
+     *
+     * Steps 6–7: decode and validate the ID token.
+     *
+     *
+     *
      * @return true only when an ID token is present and every validation check passed.
      */
     private fun decodeAndValidateIdToken(
@@ -348,6 +377,7 @@ class AuthFlowViewModel(
             return false
         }
 
+        // step 6 decode if id token is there
         val jwt = try {
             Jwt.parse(idToken)
         } catch (e: Exception) {
@@ -373,6 +403,7 @@ class AuthFlowViewModel(
             return false
         }
 
+        // step 7 validation
         val checks = IdTokenValidator.validate(
             jwt = jwt,
             jwks = keys,
@@ -396,10 +427,22 @@ class AuthFlowViewModel(
         return allPassed
     }
 
-    /** Step 8: use the access token the way it is meant to be used. */
+    /**
+     *
+     * Called from the UI: in ActionsCard
+     *
+     * Step 8:
+     *
+     *  After a successful login
+     *      use the access token as a bearer credential
+     *      login is already done
+     *
+     */
     fun callProtectedApi() {
+        // early returns for no sign in and no validation
         val accessToken = tokens?.accessToken ?: return
         if (uiState.busy) return
+
         viewModelScope.launch {
             uiState = uiState.copy(busy = true)
             setStatus(Steps.API, StepStatus.Running)
@@ -473,7 +516,7 @@ class AuthFlowViewModel(
         uiState = FlowUiState(config = uiState.config)
     }
 
-    /** Updates only the status of one step card. */
+    /** Updates only the status of one-step card. */
     private fun setStatus(key: String, status: StepStatus) {
         updateStep(key) { it.copy(status = status) }
     }

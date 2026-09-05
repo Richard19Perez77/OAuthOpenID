@@ -10,7 +10,16 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** HTTP or protocol error from the OIDC client. */
+/**
+ *
+ * HTTP or protocol error from the OIDC client.
+ *
+ *  discovery: returned issuer != to url asked
+ *  readBodyOrThrow: http status not 2xx OAuth error JSON body
+ *
+ *  subclassing this out is clearer in stack traces
+ *
+ */
 class OidcException(message: String) : IOException(message)
 
 /**
@@ -25,22 +34,32 @@ class OidcException(message: String) : IOException(message)
 class OidcClient {
 
     /**
+     *
+     * Asks:
+     *  Where are your endpoints?
+     *
      * Fetches the provider's discovery document.
      *
-     * Endpoints come from the provider rather than being hardcoded, which is what lets this
-     * same code work against any conforming OIDC provider.
+     * Endpoints come from the provider rather than being hardcoded.
+     *
+     * Which is what lets this same code work against any conforming OIDC provider.
+     *
      */
-    suspend fun discover(issuer: String): ProviderMetadata = withContext(Dispatchers.IO) {
+    suspend fun discover(issuer: String):
+            ProviderMetadata = withContext(Dispatchers.IO) {
         val url = "${issuer.trimEnd('/')}/.well-known/openid-configuration"
         val body = httpGet(url)
         val json = JSONObject(body)
         val discoveredIssuer = json.getString("issuer")
-        // OIDC Discovery: the returned issuer MUST be identical to the Issuer URL used.
+        // OIDC Discovery:
+        //  The returned issuer MUST be identical to the Issuer URL used.
+        //      issuer url vs document url
         if (discoveredIssuer.trimEnd('/') != issuer.trimEnd('/')) {
             throw OidcException(
                 "Discovered issuer \"$discoveredIssuer\" does not match configured issuer \"$issuer\"",
             )
         }
+        // snapshot of OIDC (open id connect) discover document
         ProviderMetadata(
             issuer = discoveredIssuer,
             authorizationEndpoint = json.getString("authorization_endpoint"),
@@ -131,19 +150,29 @@ class OidcClient {
         ),
     )
 
-    /** Profile claims for the signed-in user. Authorized with the *access* token. */
+    /**
+     *
+     * Profile claims for the signed-in user. Authorized with the *access* token.
+     *
+     */
     suspend fun getUserInfo(userInfoEndpoint: String, accessToken: String): String =
         withContext(Dispatchers.IO) {
             JSONObject(httpGet(userInfoEndpoint, accessToken)).toString(2)
         }
 
-    /** Calls an ordinary protected API with the access token, the whole point of OAuth. */
-    suspend fun callApi(url: String, accessToken: String): String = withContext(Dispatchers.IO) {
-        val body = httpGet(url, accessToken)
-        runCatching { JSONArray(body).toString(2) }
-            .recoverCatching { JSONObject(body).toString(2) }
-            .getOrDefault(body)
-    }
+    /**
+     *
+     * Calls an ordinary protected API with the access token.
+     *      The whole point of OAuth.
+     *
+     */
+    suspend fun callApi(url: String, accessToken: String): String =
+        withContext(Dispatchers.IO) {
+            val body = httpGet(url, accessToken)
+            runCatching { JSONArray(body).toString(2) }
+                .recoverCatching { JSONObject(body).toString(2) }
+                .getOrDefault(body)
+        }
 
     /** POSTs form fields to the token endpoint and maps the JSON body to [TokenResponse]. */
     private suspend fun postForTokens(
