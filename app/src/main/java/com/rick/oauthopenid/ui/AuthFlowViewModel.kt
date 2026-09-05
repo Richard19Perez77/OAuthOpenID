@@ -501,11 +501,13 @@ class AuthFlowViewModel(
     }
 
     /**
+     *
      * Clears local state only.
      *
-     * This is the weakest of the three levels of "log out": the provider still has a session
-     * cookie, so signing in again may not prompt for credentials. A full logout also revokes
-     * the tokens and visits the provider's end_session_endpoint.
+     * This is the weakest of the three levels of "log out": the provider still has a session cookie, so signing in again may not prompt for credentials.
+     *
+     * A full logout also revokes the tokens and visits the provider's end_session_endpoint.
+     *
      */
     fun reset() {
         metadata = null

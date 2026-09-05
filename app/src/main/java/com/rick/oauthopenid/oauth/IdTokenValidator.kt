@@ -15,23 +15,34 @@ data class ValidationCheck(
 )
 
 /**
+ *
  * Validates an OIDC ID token.
  *
- * Every check here exists because skipping it enables a specific attack. The two most
- * important are the signature (without it the token is unauthenticated JSON) and `aud`
- * (without it, a token minted for a *different* client can be replayed at this one — the
- * token substitution attack that OIDC exists to prevent).
+ * Every check here exists because skipping it enables a specific attack.
  *
- * A production app should let a maintained library do this. It is spelled out here because
- * reading the checks is the point of this project.
+ * The two most important are
+ *
+ *      the signature
+ *          (without it the token is unauthenticated JSON)
+ *
+ *      and `aud`
+ *          (without it, a token minted for a *different* client can be replayed at this one — the token substitution attack that OIDC exists to prevent).
+ *
+ * A production app should let a maintained library do this.
+ *
+ * It is spelled out here because reading the checks is the point of this project.
+ *
  */
 object IdTokenValidator {
 
     /**
-     * Algorithms we're willing to accept. An allowlist rather than "whatever the token says"
-     * is deliberate: historically, JWT libraries that trusted the header's `alg` were tricked
-     * into accepting `none` (no signature at all), or into verifying an RS256 token as HS256
-     * using the *public* key as an HMAC secret — which the attacker also has.
+     *
+     * Algorithms we're willing to accept.
+     *
+     * An allowlist rather than "whatever the token says" is deliberate:
+     *
+     *      Historically, JWT libraries that trusted the header's `alg` were tricked into accepting `none` (no signature at all), or into verifying an RS256 token as HS256 using the *public* key as an HMAC secret — which the attacker also has.
+     *
      */
     private val ALLOWED_ALGORITHMS = setOf("RS256")
 
@@ -72,11 +83,13 @@ object IdTokenValidator {
     }
 
     /**
+     *
      * The check that makes everything else meaningful.
      *
-     * An RSA public key is just two big integers, the modulus `n` and exponent `e`, which the
-     * provider publishes at its `jwks_uri`. We rebuild the key from those and verify the
-     * signature over the raw `header.payload` bytes.
+     * An RSA public key is just two big integers, the modulus `n` and exponent `e`, which the provider publishes at its `jwks_uri`.
+     *
+     * We rebuild the key from those and verify the signature over the raw `header.payload` bytes.
+     *
      */
     private fun checkSignature(jwt: Jwt, jwks: JSONArray): ValidationCheck {
         val name = "Signature verifies"
@@ -114,7 +127,11 @@ object IdTokenValidator {
         }
     }
 
-    /** Finds the JWKS entry for this token's `kid`, or the only key if `kid` is omitted. */
+    /**
+     *
+     * Finds the JWKS entry for this token's `kid`, or the only key if `kid` is omitted.
+     *
+     */
     private fun findKey(jwks: JSONArray, kid: String?): JSONObject? {
         val keys = (0 until jwks.length()).mapNotNull { jwks.optJSONObject(it) }
         // Match on kid so key rotation works. If the token omits kid and there's exactly one
@@ -136,7 +153,9 @@ object IdTokenValidator {
     }
 
     /**
+     *
      * `aud` is either a single string or an array of strings, and must contain our client id.
+     *
      * If `azp` (authorized party) is present it must be our client id too.
      */
     private fun checkAudience(jwt: Jwt, expectedClientId: String): ValidationCheck {
@@ -191,8 +210,11 @@ object IdTokenValidator {
     }
 
     /**
-     * Binds this token to the one authorization request we made. Without it, a token captured
-     * from an earlier sign-in could be replayed.
+     *
+     * Binds this token to the one authorization request we made.
+     *
+     * Without it, a token captured from an earlier sign-in could be replayed.
+     *
      */
     private fun checkNonce(jwt: Jwt, expectedNonce: String): ValidationCheck {
         val nonce = jwt.payload.optString("nonce")

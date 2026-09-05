@@ -4,7 +4,7 @@ import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rick.oauthopenid.oauth.IdTokenValidator
 import com.rick.oauthopenid.oauth.Jwt
-import com.rick.oauthopenid.oauth.Pkce
+import com.rick.oauthopenid.oauth.PKCE
 import com.rick.oauthopenid.oauth.ValidationCheck
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,7 +23,7 @@ import java.security.interfaces.RSAPublicKey
 /**
  * Tests for the protocol pieces that carry security weight.
  *
- * These run on a device because [Pkce] and [Jwt] use `android.util.Base64`, which is stubbed
+ * These run on a device because [PKCE] and [Jwt] use `android.util.Base64`, which is stubbed
  * out in host-side unit tests.
  *
  * The negative cases matter more than the positive one: it is easy to write a validator that
@@ -41,14 +41,14 @@ class OAuthProtocolTest {
         val verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         assertEquals(
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-            Pkce.codeChallenge(verifier),
+            PKCE.codeChallenge(verifier),
         )
     }
 
     /** Confirms verifiers are unique and at least 43 characters. */
     @Test
     fun randomValuesAreUniqueAndLongEnough() {
-        val values = List(100) { Pkce.randomValue() }
+        val values = List(100) { PKCE.randomValue() }
         // 32 bytes base64url-encodes to 43 characters, RFC 7636's minimum verifier length.
         values.forEach { assertEquals(43, it.length) }
         assertEquals("values must never repeat", 100, values.toSet().size)
@@ -59,8 +59,8 @@ class OAuthProtocolTest {
     fun challengeIsNotTheVerifier() {
         // If these were ever equal we would effectively be using the `plain` method, which
         // gives an attacker who reads the authorization request everything they need.
-        val verifier = Pkce.randomValue()
-        assertNotEquals(verifier, Pkce.codeChallenge(verifier))
+        val verifier = PKCE.randomValue()
+        assertNotEquals(verifier, PKCE.codeChallenge(verifier))
     }
 
     // --- ID token validation --------------------------------------------------------------

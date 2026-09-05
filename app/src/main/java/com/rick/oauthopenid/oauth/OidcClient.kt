@@ -86,10 +86,10 @@ class OidcClient {
         metadata: ProviderMetadata,
         config: OidcConfig,
     ): AuthorizationRequest {
-        val codeVerifier = Pkce.randomValue()
-        val codeChallenge = Pkce.codeChallenge(codeVerifier)
-        val state = Pkce.randomValue(16)
-        val nonce = Pkce.randomValue(16)
+        val codeVerifier = PKCE.randomValue()
+        val codeChallenge = PKCE.codeChallenge(codeVerifier)
+        val state = PKCE.randomValue(16)
+        val nonce = PKCE.randomValue(16)
 
         val url = metadata.authorizationEndpoint.toUri().buildUpon()
             // "code", never "token": an access token must not travel through the browser.
