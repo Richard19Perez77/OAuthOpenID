@@ -1,47 +1,70 @@
 package com.rick.oauthopenid
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.activity.viewModels
+import androidx.browser.customtabs.CustomTabsIntent
+import com.rick.oauthopenid.ui.AuthFlowScreen
+import com.rick.oauthopenid.ui.AuthFlowViewModel
 import com.rick.oauthopenid.ui.theme.OAuthOpenIDTheme
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: AuthFlowViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             OAuthOpenIDTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                AuthFlowScreen(
+                    viewModel = viewModel,
+                    onLaunchAuthorization = ::launchAuthorization,
+                )
             }
         }
+        handlePossibleRedirect(intent)
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+    /**
+     * The authorization server sends the user back here. Because this activity is
+     * `singleTask`, the redirect arrives as a new intent on the existing instance rather than
+     * starting a second copy.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePossibleRedirect(intent)
+    }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    OAuthOpenIDTheme {
-        Greeting("Android")
+    /**
+     * Opens the authorization request in the system browser via Custom Tabs.
+     *
+     * RFC 8252 requires this instead of a WebView. A WebView is controlled by this app, so it
+     * could read the password the user types into the provider's page; it also has its own
+     * cookie jar, which breaks single sign-on, password managers and passkeys.
+     */
+    private fun launchAuthorization(url: String) {
+        CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .build()
+            .launchUrl(this, Uri.parse(url))
+    }
+
+    private fun handlePossibleRedirect(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == REDIRECT_SCHEME) {
+            viewModel.onRedirect(data.toString())
+            // Consume it, so a rotation doesn't replay the same one-time code.
+            intent.data = null
+        }
+    }
+
+    private companion object {
+        const val REDIRECT_SCHEME = "com.rick.oauthopenid"
     }
 }
