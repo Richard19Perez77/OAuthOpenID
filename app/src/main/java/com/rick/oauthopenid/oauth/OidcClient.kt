@@ -33,8 +33,15 @@ class OidcClient {
         val url = "${issuer.trimEnd('/')}/.well-known/openid-configuration"
         val body = httpGet(url)
         val json = JSONObject(body)
+        val discoveredIssuer = json.getString("issuer")
+        // OIDC Discovery: the returned issuer MUST be identical to the Issuer URL used.
+        if (discoveredIssuer.trimEnd('/') != issuer.trimEnd('/')) {
+            throw OidcException(
+                "Discovered issuer \"$discoveredIssuer\" does not match configured issuer \"$issuer\"",
+            )
+        }
         ProviderMetadata(
-            issuer = json.getString("issuer"),
+            issuer = discoveredIssuer,
             authorizationEndpoint = json.getString("authorization_endpoint"),
             tokenEndpoint = json.getString("token_endpoint"),
             jwksUri = json.getString("jwks_uri"),

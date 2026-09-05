@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rick.oauthopenid.oauth.AuthorizationRequest
@@ -96,20 +97,24 @@ private fun initialSteps() = listOf(
     ),
 )
 
-class AuthFlowViewModel : ViewModel() {
+class AuthFlowViewModel(
+    private val savedStateHandle: SavedStateHandle,
+) : ViewModel() {
 
-    var uiState by mutableStateOf(FlowUiState())
+    var uiState by mutableStateOf(FlowUiState(config = restoreConfig()))
         private set
 
     private val client = OidcClient()
 
-    private var metadata: ProviderMetadata? = null
+    private var metadata: ProviderMetadata? = restoreMetadata()
     private var jwks: JSONArray? = null
-    private var pendingRequest: AuthorizationRequest? = null
+    private var pendingRequest: AuthorizationRequest? = restorePendingRequest()
     private var tokens: TokenResponse? = null
 
     fun updateConfig(transform: (OidcConfig) -> OidcConfig) {
-        uiState = uiState.copy(config = transform(uiState.config))
+        val updated = transform(uiState.config)
+        uiState = uiState.copy(config = updated)
+        persistConfig(updated)
     }
 
     /** Steps 1–3: discover, generate the per-request secrets, and build the authorize URL. */
@@ -121,6 +126,7 @@ class AuthFlowViewModel : ViewModel() {
             jwks = null
             pendingRequest = null
             tokens = null
+            clearPersistedAuthSession()
 
             val config = uiState.config
             setStatus(Steps.DISCOVERY, StepStatus.Running)
@@ -130,6 +136,7 @@ class AuthFlowViewModel : ViewModel() {
                 failStep(Steps.DISCOVERY, "Discovery failed: ${e.message}")
                 return@launch
             }
+            persistMetadata(discovered)
 
             completeStep(
                 key = Steps.DISCOVERY,
@@ -154,6 +161,7 @@ class AuthFlowViewModel : ViewModel() {
 
             val request = client.buildAuthorizationRequest(discovered, config)
             pendingRequest = request
+            persistPendingRequest(request)
 
             completeStep(
                 key = Steps.PKCE,
@@ -186,9 +194,24 @@ class AuthFlowViewModel : ViewModel() {
 
     /** Steps 4–7: handle the redirect, exchange the code, then validate what came back. */
     fun onRedirect(redirectUri: String) {
-        val request = pendingRequest ?: return
-        val discovered = metadata ?: return
         if (uiState.busy) return
+
+        // Restore after process death before deciding the redirect is orphaned.
+        if (pendingRequest == null) pendingRequest = restorePendingRequest()
+        if (metadata == null) metadata = restoreMetadata()
+
+        val request = pendingRequest
+        val discovered = metadata
+        if (request == null || discovered == null) {
+            failStep(
+                Steps.REDIRECT,
+                "OAuth session was lost (app was killed while the browser was open). " +
+                    "Start sign-in again — the authorization code cannot be redeemed without " +
+                    "the PKCE verifier and state saved from this device.",
+            )
+            clearPersistedAuthSession()
+            return
+        }
 
         viewModelScope.launch {
             uiState = uiState.copy(busy = true)
@@ -199,6 +222,7 @@ class AuthFlowViewModel : ViewModel() {
             if (error != null) {
                 val description = uri.getQueryParameter("error_description").orEmpty()
                 failStep(Steps.REDIRECT, "Provider returned error=$error $description")
+                clearPersistedAuthSession()
                 return@launch
             }
 
@@ -207,6 +231,7 @@ class AuthFlowViewModel : ViewModel() {
 
             if (code == null) {
                 failStep(Steps.REDIRECT, "No authorization code in the redirect")
+                clearPersistedAuthSession()
                 return@launch
             }
 
@@ -218,6 +243,7 @@ class AuthFlowViewModel : ViewModel() {
                     message = "state mismatch — expected '${request.state}', got '$returnedState'. " +
                         "Aborting: this response did not come from our request.",
                 )
+                clearPersistedAuthSession()
                 return@launch
             }
 
@@ -238,6 +264,7 @@ class AuthFlowViewModel : ViewModel() {
                 client.exchangeCode(discovered, uiState.config, code, request.codeVerifier)
             } catch (e: Exception) {
                 failStep(Steps.TOKEN, "Token exchange failed: ${e.message}")
+                clearPersistedAuthSession()
                 return@launch
             }
             tokens = tokenResponse
@@ -255,7 +282,32 @@ class AuthFlowViewModel : ViewModel() {
                 ),
             )
 
-            decodeAndValidateIdToken(tokenResponse)
+            // Re-fetch JWKS if process death cleared the in-memory keys.
+            if (jwks == null) {
+                jwks = try {
+                    client.fetchJwks(discovered.jwksUri)
+                } catch (e: Exception) {
+                    failStep(Steps.VALIDATE, "Could not fetch JWKS: ${e.message}")
+                    clearPersistedAuthSession()
+                    return@launch
+                }
+            }
+
+            val validated = decodeAndValidateIdToken(tokenResponse, request, discovered)
+            // One-time secrets are spent once the redirect is handled; drop them either way.
+            clearPersistedAuthSession()
+            pendingRequest = null
+
+            if (!validated) {
+                // failStep / failed VALIDATE already updated UI; never treat this as signed-in.
+                tokens = null
+                uiState = uiState.copy(
+                    busy = false,
+                    signedIn = false,
+                    hasRefreshToken = false,
+                )
+                return@launch
+            }
 
             uiState = uiState.copy(
                 busy = false,
@@ -265,19 +317,25 @@ class AuthFlowViewModel : ViewModel() {
         }
     }
 
-    private fun decodeAndValidateIdToken(tokenResponse: TokenResponse) {
-        val request = pendingRequest ?: return
+    /**
+     * @return true only when an ID token is present and every validation check passed.
+     */
+    private fun decodeAndValidateIdToken(
+        tokenResponse: TokenResponse,
+        request: AuthorizationRequest,
+        discovered: ProviderMetadata,
+    ): Boolean {
         val idToken = tokenResponse.idToken
         if (idToken == null) {
             failStep(Steps.ID_TOKEN, "No id_token returned — was 'openid' in the scope?")
-            return
+            return false
         }
 
         val jwt = try {
             Jwt.parse(idToken)
         } catch (e: Exception) {
             failStep(Steps.ID_TOKEN, "Could not parse the ID token: ${e.message}")
-            return
+            return false
         }
 
         completeStep(
@@ -295,13 +353,13 @@ class AuthFlowViewModel : ViewModel() {
         val keys = jwks
         if (keys == null) {
             failStep(Steps.VALIDATE, "No JWKS available to verify against")
-            return
+            return false
         }
 
         val checks = IdTokenValidator.validate(
             jwt = jwt,
             jwks = keys,
-            expectedIssuer = metadata?.issuer.orEmpty(),
+            expectedIssuer = discovered.issuer,
             expectedClientId = uiState.config.clientId,
             expectedNonce = request.nonce,
         )
@@ -318,6 +376,7 @@ class AuthFlowViewModel : ViewModel() {
                 },
             )
         }
+        return allPassed
     }
 
     /** Step 8: use the access token the way it is meant to be used. */
@@ -393,6 +452,7 @@ class AuthFlowViewModel : ViewModel() {
         jwks = null
         pendingRequest = null
         tokens = null
+        clearPersistedAuthSession()
         uiState = FlowUiState(config = uiState.config)
     }
 
@@ -415,5 +475,109 @@ class AuthFlowViewModel : ViewModel() {
         uiState = uiState.copy(
             steps = uiState.steps.map { if (it.key == key) transform(it) else it },
         )
+    }
+
+    // --- Process-death survival for the in-flight OAuth request ----------------------------
+
+    private fun persistConfig(config: OidcConfig) {
+        savedStateHandle[KEY_ISSUER] = config.issuer
+        savedStateHandle[KEY_CLIENT_ID] = config.clientId
+        savedStateHandle[KEY_REDIRECT_URI] = config.redirectUri
+        savedStateHandle[KEY_SCOPE] = config.scope
+    }
+
+    private fun restoreConfig(): OidcConfig {
+        val issuer = savedStateHandle.get<String>(KEY_ISSUER) ?: return OidcConfig.DEMO
+        return OidcConfig(
+            issuer = issuer,
+            clientId = savedStateHandle.get<String>(KEY_CLIENT_ID) ?: OidcConfig.DEMO.clientId,
+            redirectUri = savedStateHandle.get<String>(KEY_REDIRECT_URI) ?: OidcConfig.DEMO.redirectUri,
+            scope = savedStateHandle.get<String>(KEY_SCOPE) ?: OidcConfig.DEMO.scope,
+        )
+    }
+
+    private fun persistPendingRequest(request: AuthorizationRequest) {
+        savedStateHandle[KEY_AUTH_URL] = request.url
+        savedStateHandle[KEY_CODE_VERIFIER] = request.codeVerifier
+        savedStateHandle[KEY_CODE_CHALLENGE] = request.codeChallenge
+        savedStateHandle[KEY_STATE] = request.state
+        savedStateHandle[KEY_NONCE] = request.nonce
+    }
+
+    private fun restorePendingRequest(): AuthorizationRequest? {
+        val codeVerifier = savedStateHandle.get<String>(KEY_CODE_VERIFIER) ?: return null
+        val state = savedStateHandle.get<String>(KEY_STATE) ?: return null
+        val nonce = savedStateHandle.get<String>(KEY_NONCE) ?: return null
+        return AuthorizationRequest(
+            url = savedStateHandle.get<String>(KEY_AUTH_URL).orEmpty(),
+            codeVerifier = codeVerifier,
+            codeChallenge = savedStateHandle.get<String>(KEY_CODE_CHALLENGE).orEmpty(),
+            state = state,
+            nonce = nonce,
+        )
+    }
+
+    private fun persistMetadata(metadata: ProviderMetadata) {
+        savedStateHandle[KEY_META_ISSUER] = metadata.issuer
+        savedStateHandle[KEY_META_AUTH] = metadata.authorizationEndpoint
+        savedStateHandle[KEY_META_TOKEN] = metadata.tokenEndpoint
+        savedStateHandle[KEY_META_JWKS] = metadata.jwksUri
+        savedStateHandle[KEY_META_USERINFO] = metadata.userInfoEndpoint
+        savedStateHandle[KEY_META_END_SESSION] = metadata.endSessionEndpoint
+        savedStateHandle[KEY_META_RAW] = metadata.rawJson
+    }
+
+    private fun restoreMetadata(): ProviderMetadata? {
+        val issuer = savedStateHandle.get<String>(KEY_META_ISSUER) ?: return null
+        val authorizationEndpoint = savedStateHandle.get<String>(KEY_META_AUTH) ?: return null
+        val tokenEndpoint = savedStateHandle.get<String>(KEY_META_TOKEN) ?: return null
+        val jwksUri = savedStateHandle.get<String>(KEY_META_JWKS) ?: return null
+        return ProviderMetadata(
+            issuer = issuer,
+            authorizationEndpoint = authorizationEndpoint,
+            tokenEndpoint = tokenEndpoint,
+            jwksUri = jwksUri,
+            userInfoEndpoint = savedStateHandle.get<String>(KEY_META_USERINFO),
+            endSessionEndpoint = savedStateHandle.get<String>(KEY_META_END_SESSION),
+            rawJson = savedStateHandle.get<String>(KEY_META_RAW).orEmpty(),
+        )
+    }
+
+    private fun clearPersistedAuthSession() {
+        listOf(
+            KEY_AUTH_URL,
+            KEY_CODE_VERIFIER,
+            KEY_CODE_CHALLENGE,
+            KEY_STATE,
+            KEY_NONCE,
+            KEY_META_ISSUER,
+            KEY_META_AUTH,
+            KEY_META_TOKEN,
+            KEY_META_JWKS,
+            KEY_META_USERINFO,
+            KEY_META_END_SESSION,
+            KEY_META_RAW,
+        ).forEach { savedStateHandle.remove<String>(it) }
+    }
+
+    private companion object {
+        const val KEY_ISSUER = "cfg_issuer"
+        const val KEY_CLIENT_ID = "cfg_client_id"
+        const val KEY_REDIRECT_URI = "cfg_redirect_uri"
+        const val KEY_SCOPE = "cfg_scope"
+
+        const val KEY_AUTH_URL = "pending_auth_url"
+        const val KEY_CODE_VERIFIER = "pending_code_verifier"
+        const val KEY_CODE_CHALLENGE = "pending_code_challenge"
+        const val KEY_STATE = "pending_state"
+        const val KEY_NONCE = "pending_nonce"
+
+        const val KEY_META_ISSUER = "meta_issuer"
+        const val KEY_META_AUTH = "meta_auth"
+        const val KEY_META_TOKEN = "meta_token"
+        const val KEY_META_JWKS = "meta_jwks"
+        const val KEY_META_USERINFO = "meta_userinfo"
+        const val KEY_META_END_SESSION = "meta_end_session"
+        const val KEY_META_RAW = "meta_raw"
     }
 }

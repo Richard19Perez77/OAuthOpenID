@@ -57,14 +57,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePossibleRedirect(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == REDIRECT_SCHEME) {
+        val expected = Uri.parse(viewModel.uiState.config.redirectUri)
+        // Align with the manifest intent-filter and exact redirect-URI guidance: scheme + host.
+        if (data.scheme == expected.scheme && data.host == expected.host) {
             viewModel.onRedirect(data.toString())
             // Consume it, so a rotation doesn't replay the same one-time code.
             intent.data = null
         }
-    }
-
-    private companion object {
-        const val REDIRECT_SCHEME = "com.rick.oauthopenid"
     }
 }
