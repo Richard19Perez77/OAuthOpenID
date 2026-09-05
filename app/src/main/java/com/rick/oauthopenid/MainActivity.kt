@@ -37,9 +37,10 @@ class MainActivity : ComponentActivity() {
      *
      * Reuse on main from singleTask not a new one.
      *
-     * The authorization server sends the user back here. Because this activity is
-     * `singleTask`, the redirect arrives as a new intent on the existing instance rather than
-     * starting a second copy.
+     * The authorization server sends the user back here.
+     *
+     * Because this activity is `singleTask`, the redirect arrives as a new intent on the existing instance rather than starting a second copy.
+     *
      */
     override fun onNewIntent(intent: Intent) {
         // let the base class record the new intent

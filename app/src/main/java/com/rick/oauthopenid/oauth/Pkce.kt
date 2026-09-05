@@ -38,11 +38,13 @@ object Pkce {
     }
 
     /**
+     *
      * `code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))` — the `S256` method.
      *
-     * The other method the spec defines, `plain`, sends the verifier itself. That is useless
-     * against anyone who can read the authorization request, which is exactly the attacker
-     * PKCE exists to stop, so this app only ever uses S256.
+     * The other method the spec defines, `plain`, sends the verifier itself.
+     *
+     * That is useless against anyone who can read the authorization request, which is exactly the attacker PKCE exists to stop, so this app only ever uses S256.
+     *
      */
     fun codeChallenge(codeVerifier: String): String {
         val digest = MessageDigest.getInstance("SHA-256")

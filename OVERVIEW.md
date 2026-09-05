@@ -956,3 +956,18 @@ You don't need to wait for the RFC. Following RFC 9700 today gets you essentiall
   the token response makes the whole thing click in a way reading can't.
 
 Back to the [README](README.md).
+
+---
+
+Developer Notes:
+
+PKCE - Proof key for code exchange, security extension for OAuth 2.0
+    code verifier
+    code challenge
+    authorization request
+    token exchange
+    verification
+        client will generate a random secret, the code verifier, then derive a code challenge from it. the code challenge is sent with the authorization request, and the original verifier is sent when exchanging the code for a token. this ensures only the client that started the flow can complete it.
+        not a form of client authentication and does not replace a client secret. use it alongside whatever client authentication methoc you're already using - it adds a separte layer of protection against code injection.
+        PKCE is on every auth code flow, for mobile and native apps, that can't safely store a client secret, but its protection against authorization code injection makes it valuable for all cient types, including confidential web app.
+

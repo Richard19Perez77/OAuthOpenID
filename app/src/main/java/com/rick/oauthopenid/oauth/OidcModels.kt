@@ -1,11 +1,15 @@
 package com.rick.oauthopenid.oauth
 
 /**
+ *
  * Everything needed to talk to one OpenID Connect provider.
  *
- * Note there is no client secret. This app is a *public client*: the APK ships to devices we
- * don't control, so any secret inside it can be recovered with a zip tool. PKCE takes the place
- * of a secret when proving that the app redeeming the code is the app that requested it.
+ * Note there is no client secret.
+ *
+ * This app is a *public client*: the APK ships to devices we don't control, so any secret inside it can be recovered with a zip tool.
+ *
+ * PKCE takes the place of a secret when proving that the app redeeming the code is the app that requested it.
+ *
  */
 data class OidcConfig(
     val issuer: String,

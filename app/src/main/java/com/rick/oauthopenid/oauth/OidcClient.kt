@@ -1,6 +1,6 @@
 package com.rick.oauthopenid.oauth
 
-import android.net.Uri
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -72,7 +72,7 @@ class OidcClient {
         val state = Pkce.randomValue(16)
         val nonce = Pkce.randomValue(16)
 
-        val url = Uri.parse(metadata.authorizationEndpoint).buildUpon()
+        val url = metadata.authorizationEndpoint.toUri().buildUpon()
             // "code", never "token": an access token must not travel through the browser.
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("client_id", config.clientId)
