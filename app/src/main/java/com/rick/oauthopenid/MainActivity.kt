@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: AuthFlowViewModel by viewModels()
 
+    /** Sets up the Compose UI and checks if this launch is already an OAuth redirect. */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -31,13 +32,21 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     *
+     * Returns from browser hook.
+     *
+     * Reuse on main from singleTask not a new one.
+     *
      * The authorization server sends the user back here. Because this activity is
      * `singleTask`, the redirect arrives as a new intent on the existing instance rather than
      * starting a second copy.
      */
     override fun onNewIntent(intent: Intent) {
+        // let the base class record the new intent
         super.onNewIntent(intent)
+        // replace the old launch intent with this one
         setIntent(intent)
+        // url in app redirect and hand it to view model for exchange for tokens
         handlePossibleRedirect(intent)
     }
 
@@ -55,13 +64,16 @@ class MainActivity : ComponentActivity() {
             .launchUrl(this, url.toUri())
     }
 
+    /** If the intent is our OAuth redirect, pass the URI to the ViewModel and consume it. */
     private fun handlePossibleRedirect(intent: Intent?) {
-        val data = intent?.data ?: return
+        val data = intent?.data ?: return // can be null
+        // redirect uri this app registered
         val expected = viewModel.uiState.config.redirectUri.toUri()
-        // Align with the manifest intent-filter and exact redirect-URI guidance: scheme + host.
+        // schema and host check, matches android manifest intent-filter
         if (data.scheme == expected.scheme && data.host == expected.host) {
+            // pass uri into flow for exchange
             viewModel.onRedirect(data.toString())
-            // Consume it, so a rotation doesn't replay the same one-time code.
+            // clearing data means redirect is handled
             intent.data = null
         }
     }

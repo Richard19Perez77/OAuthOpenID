@@ -54,6 +54,7 @@ private val PASS_COLOR = Color(0xFF2E7D32)
 private val FAIL_COLOR = Color(0xFFC62828)
 private val IDLE_COLOR = Color(0xFF9E9E9E)
 
+/** Main screen: provider config, actions, and a card for each OAuth step. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthFlowScreen(
@@ -116,6 +117,7 @@ fun AuthFlowScreen(
     }
 }
 
+/** Expandable card for issuer, client id, scopes, and redirect URI. */
 @Composable
 private fun ConfigCard(state: FlowUiState, viewModel: AuthFlowViewModel) {
     var expanded by remember { mutableStateOf(false) }
@@ -205,6 +207,7 @@ private fun ConfigCard(state: FlowUiState, viewModel: AuthFlowViewModel) {
     }
 }
 
+/** Sign-in, reset, and (when signed in) API / refresh-token buttons. */
 @Composable
 private fun ActionsCard(state: FlowUiState, viewModel: AuthFlowViewModel) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -252,6 +255,7 @@ private fun ActionsCard(state: FlowUiState, viewModel: AuthFlowViewModel) {
     }
 }
 
+/** Shows why the current flow stopped. */
 @Composable
 private fun ErrorCard(message: String) {
     Card(
@@ -268,6 +272,7 @@ private fun ErrorCard(message: String) {
     }
 }
 
+/** One flow step, expandable to show messages, fields, and validation rows. */
 @Composable
 private fun StepCard(step: FlowStep, validation: List<ValidationCheck>) {
     var expanded by remember { mutableStateOf(false) }
@@ -314,6 +319,7 @@ private fun StepCard(step: FlowStep, validation: List<ValidationCheck>) {
     }
 }
 
+/** Colored status glyph for idle, running, done, or failed. */
 @Composable
 private fun StatusDot(status: StepStatus) {
     val (color, glyph) = when (status) {
@@ -332,6 +338,7 @@ private fun StatusDot(status: StepStatus) {
     }
 }
 
+/** One ID-token check with pass/fail and a short detail line. */
 @Composable
 private fun ValidationRow(check: ValidationCheck) {
     Row(Modifier.padding(vertical = 4.dp)) {
@@ -353,6 +360,7 @@ private fun ValidationRow(check: ValidationCheck) {
     }
 }
 
+/** Label plus selectable value, truncated until the user expands it. */
 @Composable
 private fun FieldBlock(field: StepField) {
     var showAll by remember { mutableStateOf(false) }
@@ -395,6 +403,7 @@ private fun FieldBlock(field: StepField) {
     }
 }
 
+/** Short note on why tokens stay off the front channel. */
 @Composable
 private fun FooterCard() {
     Card(modifier = Modifier.fillMaxWidth()) {

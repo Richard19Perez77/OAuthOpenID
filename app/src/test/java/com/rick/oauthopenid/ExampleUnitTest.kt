@@ -10,6 +10,7 @@ import org.junit.Assert.*
  * See [testing documentation](http://d.android.com/tools/testing).
  */
 class ExampleUnitTest {
+    /** Sanity check that host-side unit tests run. */
     @Test
     fun addition_isCorrect() {
         assertEquals(4, 2 + 2)

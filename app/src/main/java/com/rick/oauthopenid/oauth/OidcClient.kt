@@ -10,6 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+/** HTTP or protocol error from the OIDC client. */
 class OidcException(message: String) : IOException(message)
 
 /**
@@ -144,6 +145,7 @@ class OidcClient {
             .getOrDefault(body)
     }
 
+    /** POSTs form fields to the token endpoint and maps the JSON body to [TokenResponse]. */
     private suspend fun postForTokens(
         endpoint: String,
         form: Map<String, String>,
@@ -161,6 +163,7 @@ class OidcClient {
         )
     }
 
+    /** GET with JSON accept; sends a Bearer token in the Authorization header when given. */
     private fun httpGet(url: String, bearerToken: String? = null): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -174,6 +177,7 @@ class OidcClient {
         return connection.readBodyOrThrow()
     }
 
+    /** POST `application/x-www-form-urlencoded` fields and return the response body. */
     private fun httpPostForm(url: String, form: Map<String, String>): String {
         val encoded = form.entries.joinToString("&") { (key, value) ->
             "${key.urlEncoded()}=${value.urlEncoded()}"
@@ -190,6 +194,7 @@ class OidcClient {
         return connection.readBodyOrThrow()
     }
 
+    /** Reads the body and throws [OidcException] on a non-2xx status. */
     private fun HttpURLConnection.readBodyOrThrow(): String = try {
         val status = responseCode
         val stream = if (status in 200..299) inputStream else errorStream
@@ -204,6 +209,7 @@ class OidcClient {
         disconnect()
     }
 
+    /** URL-encodes a form field name or value as UTF-8. */
     private fun String.urlEncoded(): String = URLEncoder.encode(this, "UTF-8")
 
     private companion object {

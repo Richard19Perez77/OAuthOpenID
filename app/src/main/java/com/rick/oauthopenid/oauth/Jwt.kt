@@ -19,15 +19,22 @@ class Jwt(
     val signingInput: ByteArray,
     val signature: ByteArray,
 ) {
+    /** Signing algorithm from the header (`alg`), or null if missing. */
     val algorithm: String? get() = header.optString("alg").takeIf { it.isNotEmpty() }
+
+    /** Key id from the header (`kid`), used to pick the matching JWKS key. */
     val keyId: String? get() = header.optString("kid").takeIf { it.isNotEmpty() }
 
+    /** Header JSON indented for display. */
     fun prettyHeader(): String = header.toString(2)
+
+    /** Payload JSON indented for display. */
     fun prettyPayload(): String = payload.toString(2)
 
     companion object {
         private const val B64_FLAGS = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
 
+        /** Decodes one base64url JWT segment into raw bytes. */
         fun decodeSegment(segment: String): ByteArray = Base64.decode(segment, B64_FLAGS)
 
         /**

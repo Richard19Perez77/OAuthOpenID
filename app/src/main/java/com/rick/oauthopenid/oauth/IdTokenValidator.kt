@@ -38,6 +38,7 @@ object IdTokenValidator {
     /** Tolerance for clock drift between this device and the authorization server. */
     private const val CLOCK_SKEW_SECONDS = 120L
 
+    /** Runs every ID-token check and returns the results in checklist order. */
     fun validate(
         jwt: Jwt,
         jwks: JSONArray,
@@ -55,6 +56,7 @@ object IdTokenValidator {
         checkNonce(jwt, expectedNonce),
     )
 
+    /** Rejects `none` and any algorithm outside the RS256 allowlist. */
     private fun checkAlgorithm(jwt: Jwt): ValidationCheck {
         val alg = jwt.algorithm
         return ValidationCheck(
@@ -112,6 +114,7 @@ object IdTokenValidator {
         }
     }
 
+    /** Finds the JWKS entry for this token's `kid`, or the only key if `kid` is omitted. */
     private fun findKey(jwks: JSONArray, kid: String?): JSONObject? {
         val keys = (0 until jwks.length()).mapNotNull { jwks.optJSONObject(it) }
         // Match on kid so key rotation works. If the token omits kid and there's exactly one
@@ -120,6 +123,7 @@ object IdTokenValidator {
             ?: keys.singleOrNull().takeIf { kid == null }
     }
 
+    /** Confirms `iss` is exactly the provider we discovered. */
     private fun checkIssuer(jwt: Jwt, expectedIssuer: String): ValidationCheck {
         val issuer = jwt.payload.optString("iss")
         return ValidationCheck(
@@ -156,6 +160,7 @@ object IdTokenValidator {
         )
     }
 
+    /** Confirms `exp` is still in the future, allowing a small clock-skew window. */
     private fun checkExpiry(jwt: Jwt, nowSeconds: Long): ValidationCheck {
         val exp = jwt.payload.optLong("exp", 0L)
         val valid = exp > 0 && nowSeconds <= exp + CLOCK_SKEW_SECONDS
@@ -170,6 +175,7 @@ object IdTokenValidator {
         )
     }
 
+    /** Confirms `iat` is present and not in the far future. */
     private fun checkIssuedAt(jwt: Jwt, nowSeconds: Long): ValidationCheck {
         val iat = jwt.payload.optLong("iat", 0L)
         val valid = iat > 0 && iat <= nowSeconds + CLOCK_SKEW_SECONDS

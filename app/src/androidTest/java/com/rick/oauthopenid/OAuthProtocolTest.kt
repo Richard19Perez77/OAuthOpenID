@@ -34,6 +34,7 @@ class OAuthProtocolTest {
 
     // --- PKCE -----------------------------------------------------------------------------
 
+    /** Confirms S256 matches the RFC 7636 appendix example. */
     @Test
     fun codeChallengeMatchesRfc7636TestVector() {
         // The worked example from RFC 7636, Appendix B.
@@ -44,6 +45,7 @@ class OAuthProtocolTest {
         )
     }
 
+    /** Confirms verifiers are unique and at least 43 characters. */
     @Test
     fun randomValuesAreUniqueAndLongEnough() {
         val values = List(100) { Pkce.randomValue() }
@@ -52,6 +54,7 @@ class OAuthProtocolTest {
         assertEquals("values must never repeat", 100, values.toSet().size)
     }
 
+    /** Confirms the challenge is a hash, not the verifier itself. */
     @Test
     fun challengeIsNotTheVerifier() {
         // If these were ever equal we would effectively be using the `plain` method, which
@@ -62,6 +65,7 @@ class OAuthProtocolTest {
 
     // --- ID token validation --------------------------------------------------------------
 
+    /** A correctly signed token with matching claims should pass all checks. */
     @Test
     fun validTokenPassesEveryCheck() {
         val token = mintToken(claims())
@@ -69,6 +73,7 @@ class OAuthProtocolTest {
         results.forEach { assertTrue("${it.name}: ${it.detail}", it.passed) }
     }
 
+    /** Changing claims while keeping the old signature must fail. */
     @Test
     fun tamperedPayloadFailsSignatureCheck() {
         val token = mintToken(claims())
@@ -81,6 +86,7 @@ class OAuthProtocolTest {
         assertFalse(check(validate(forged), "Signature verifies").passed)
     }
 
+    /** A token minted for a different client id must fail `aud`. */
     @Test
     fun tokenForAnotherClientFailsAudienceCheck() {
         // A token that is perfectly valid and correctly signed, just not minted for us.
@@ -91,24 +97,28 @@ class OAuthProtocolTest {
         assertFalse(check(results, "aud is this client").passed)
     }
 
+    /** A nonce from a previous request must fail. */
     @Test
     fun replayedTokenFailsNonceCheck() {
         val token = mintToken(claims().put("nonce", "nonce-from-an-older-sign-in"))
         assertFalse(check(validate(token), "nonce matches our request").passed)
     }
 
+    /** An expired token must fail `exp`. */
     @Test
     fun expiredTokenFailsExpiryCheck() {
         val token = mintToken(claims(expiresAt = NOW - 3600))
         assertFalse(check(validate(token), "exp in the future").passed)
     }
 
+    /** A token from a different issuer must fail `iss`. */
     @Test
     fun tokenFromAnotherIssuerFailsIssuerCheck() {
         val token = mintToken(claims().put("iss", "https://evil.example.com"))
         assertFalse(check(validate(token), "iss matches provider").passed)
     }
 
+    /** `alg=none` tokens must be rejected. */
     @Test
     fun unsignedTokenIsRejected() {
         // alg=none with an empty signature. Several JWT libraries once accepted these.
@@ -117,6 +127,7 @@ class OAuthProtocolTest {
         assertFalse(check(validate("$header.$payload."), "alg is allowed").passed)
     }
 
+    /** A signature from a key not in JWKS must fail. */
     @Test
     fun tokenSignedByAnUnknownKeyIsRejected() {
         val strangerKeys = KeyPairGenerator.getInstance("RSA")
@@ -129,6 +140,7 @@ class OAuthProtocolTest {
 
     // --- helpers --------------------------------------------------------------------------
 
+    /** Runs the app's validator against a minted JWT. */
     private fun validate(token: String): List<ValidationCheck> = IdTokenValidator.validate(
         jwt = Jwt.parse(token),
         jwks = jwks(),
@@ -138,9 +150,11 @@ class OAuthProtocolTest {
         nowSeconds = NOW,
     )
 
+    /** Picks one named check from the validator's result list. */
     private fun check(results: List<ValidationCheck>, name: String): ValidationCheck =
         results.first { it.name == name }
 
+    /** Builds a valid set of ID-token claims, with optional expiry/issued-at overrides. */
     private fun claims(
         expiresAt: Long = NOW + 3600,
         issuedAt: Long = NOW,
@@ -152,6 +166,7 @@ class OAuthProtocolTest {
         .put("exp", expiresAt)
         .put("iat", issuedAt)
 
+    /** Signs a JWT with RS256 using the test key (or a supplied private key). */
     private fun mintToken(
         claims: JSONObject,
         signingKey: RSAPrivateKey = privateKey,
@@ -192,7 +207,10 @@ class OAuthProtocolTest {
         val privateKey: RSAPrivateKey get() = keyPair.private as RSAPrivateKey
         val publicKey: RSAPublicKey get() = keyPair.public as RSAPublicKey
 
+        /** Encodes bytes as base64url with no padding. */
         fun encode(bytes: ByteArray): String = Base64.encodeToString(bytes, B64_FLAGS)
+
+        /** Encodes UTF-8 text as a JWT segment. */
         fun encode(text: String): String = encode(text.toByteArray(Charsets.UTF_8))
 
         /** JWK values are unsigned big-endian; BigInteger adds a sign byte we must drop. */

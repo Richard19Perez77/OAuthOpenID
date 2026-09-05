@@ -33,6 +33,7 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+/** Applies Material 3 colors (dynamic on Android 12+) and app typography. */
 @Composable
 fun OAuthOpenIDTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

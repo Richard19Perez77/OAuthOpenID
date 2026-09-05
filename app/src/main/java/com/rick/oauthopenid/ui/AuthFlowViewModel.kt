@@ -17,6 +17,7 @@ import com.rick.oauthopenid.oauth.TokenResponse
 import com.rick.oauthopenid.oauth.ValidationCheck
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import androidx.core.net.toUri
 
 enum class StepStatus { Idle, Running, Done, Failed }
 
@@ -54,6 +55,7 @@ object Steps {
     const val API = "api"
 }
 
+/** Builds the eight idle step cards shown before a sign-in starts. */
 private fun initialSteps() = listOf(
     FlowStep(
         key = Steps.DISCOVERY,
@@ -111,6 +113,7 @@ class AuthFlowViewModel(
     private var pendingRequest: AuthorizationRequest? = restorePendingRequest()
     private var tokens: TokenResponse? = null
 
+    /** Applies an edit to the current provider config and persists it. */
     fun updateConfig(transform: (OidcConfig) -> OidcConfig) {
         val updated = transform(uiState.config)
         uiState = uiState.copy(config = updated)
@@ -192,9 +195,19 @@ class AuthFlowViewModel(
         uiState = uiState.copy(launchAuthorizationUrl = null)
     }
 
-    /** Steps 4–7: handle the redirect, exchange the code, then validate what came back. */
+    /**
+     *
+     *  Steps 4–7:
+     *      handle the redirect, exchange the code, then validate what came back.
+     *
+     *  proves it belongs to this sign-in
+     *  swaps the one-time code for tokens
+     *  validates the ID token
+     *
+     *  Length of this method is due to many @return from failure paths
+     */
     fun onRedirect(redirectUri: String) {
-        if (uiState.busy) return
+        if (uiState.busy) return // avoid overlapping exchanges
 
         // Restore after process death before deciding the redirect is orphaned.
         if (pendingRequest == null) pendingRequest = restorePendingRequest()
@@ -217,8 +230,9 @@ class AuthFlowViewModel(
             uiState = uiState.copy(busy = true)
             setStatus(Steps.REDIRECT, StepStatus.Running)
 
-            val uri = Uri.parse(redirectUri)
+            val uri = redirectUri.toUri()
             val error = uri.getQueryParameter("error")
+            // user may have canceled
             if (error != null) {
                 val description = uri.getQueryParameter("error_description").orEmpty()
                 failStep(Steps.REDIRECT, "Provider returned error=$error $description")
@@ -235,8 +249,9 @@ class AuthFlowViewModel(
                 return@launch
             }
 
-            // The CSRF check. A mismatch means this callback did not come from the request we
-            // started, so the flow must be abandoned rather than "fixed up".
+            // The CSRF check:
+            //  A mismatch means this callback did not come from the request we started.
+            //  So the flow must be abandoned rather than "fixed up".
             if (returnedState != request.state) {
                 failStep(
                     key = Steps.REDIRECT,
@@ -283,6 +298,8 @@ class AuthFlowViewModel(
             )
 
             // Re-fetch JWKS if process death cleared the in-memory keys.
+            // JSON web key set is a list of providers public keys
+            // these are published at a url from discovery
             if (jwks == null) {
                 jwks = try {
                     client.fetchJwks(discovered.jwksUri)
@@ -456,21 +473,25 @@ class AuthFlowViewModel(
         uiState = FlowUiState(config = uiState.config)
     }
 
+    /** Updates only the status of one step card. */
     private fun setStatus(key: String, status: StepStatus) {
         updateStep(key) { it.copy(status = status) }
     }
 
+    /** Marks a step done and fills in its explanation and values. */
     private fun completeStep(key: String, message: String, fields: List<StepField>) {
         updateStep(key) {
             it.copy(status = StepStatus.Done, message = message, fields = fields)
         }
     }
 
+    /** Marks a step failed and stores the error for the UI banner. */
     private fun failStep(key: String, message: String) {
         updateStep(key) { it.copy(status = StepStatus.Failed, message = message) }
         uiState = uiState.copy(busy = false, error = message)
     }
 
+    /** Replaces one step in [FlowUiState.steps] by key. */
     private fun updateStep(key: String, transform: (FlowStep) -> FlowStep) {
         uiState = uiState.copy(
             steps = uiState.steps.map { if (it.key == key) transform(it) else it },
@@ -479,6 +500,7 @@ class AuthFlowViewModel(
 
     // --- Process-death survival for the in-flight OAuth request ----------------------------
 
+    /** Saves issuer, client id, redirect URI, and scope across process death. */
     private fun persistConfig(config: OidcConfig) {
         savedStateHandle[KEY_ISSUER] = config.issuer
         savedStateHandle[KEY_CLIENT_ID] = config.clientId
@@ -486,6 +508,7 @@ class AuthFlowViewModel(
         savedStateHandle[KEY_SCOPE] = config.scope
     }
 
+    /** Restores saved config, or the demo provider if nothing was stored. */
     private fun restoreConfig(): OidcConfig {
         val issuer = savedStateHandle.get<String>(KEY_ISSUER) ?: return OidcConfig.DEMO
         return OidcConfig(
@@ -496,6 +519,7 @@ class AuthFlowViewModel(
         )
     }
 
+    /** Saves PKCE, state, nonce, and the authorize URL for the in-flight request. */
     private fun persistPendingRequest(request: AuthorizationRequest) {
         savedStateHandle[KEY_AUTH_URL] = request.url
         savedStateHandle[KEY_CODE_VERIFIER] = request.codeVerifier
@@ -504,10 +528,23 @@ class AuthFlowViewModel(
         savedStateHandle[KEY_NONCE] = request.nonce
     }
 
+    /**
+     *
+     * Restores the in-flight request, or null if sign-in was never started.
+     *
+     */
     private fun restorePendingRequest(): AuthorizationRequest? {
-        val codeVerifier = savedStateHandle.get<String>(KEY_CODE_VERIFIER) ?: return null
-        val state = savedStateHandle.get<String>(KEY_STATE) ?: return null
-        val nonce = savedStateHandle.get<String>(KEY_NONCE) ?: return null
+        // sent to the token endpoint PKCE, server hashes and matches code_challenge
+        val codeVerifier =
+            savedStateHandle.get<String>(KEY_CODE_VERIFIER) ?: return null
+        // must equal state on redirected CSRF
+        val state =
+            savedStateHandle.get<String>(KEY_STATE) ?: return null
+        // must equal none in the id token
+        val nonce =
+            savedStateHandle.get<String>(KEY_NONCE) ?: return null
+
+        // generate a new one for each auth
         return AuthorizationRequest(
             url = savedStateHandle.get<String>(KEY_AUTH_URL).orEmpty(),
             codeVerifier = codeVerifier,
@@ -517,6 +554,7 @@ class AuthFlowViewModel(
         )
     }
 
+    /** Saves discovered endpoints so a redirect after process death can continue. */
     private fun persistMetadata(metadata: ProviderMetadata) {
         savedStateHandle[KEY_META_ISSUER] = metadata.issuer
         savedStateHandle[KEY_META_AUTH] = metadata.authorizationEndpoint
@@ -527,6 +565,7 @@ class AuthFlowViewModel(
         savedStateHandle[KEY_META_RAW] = metadata.rawJson
     }
 
+    /** Restores discovery results, or null if they were never saved. */
     private fun restoreMetadata(): ProviderMetadata? {
         val issuer = savedStateHandle.get<String>(KEY_META_ISSUER) ?: return null
         val authorizationEndpoint = savedStateHandle.get<String>(KEY_META_AUTH) ?: return null
@@ -543,6 +582,7 @@ class AuthFlowViewModel(
         )
     }
 
+    /** Drops one-time OAuth secrets and discovery data from SavedStateHandle. */
     private fun clearPersistedAuthSession() {
         listOf(
             KEY_AUTH_URL,
