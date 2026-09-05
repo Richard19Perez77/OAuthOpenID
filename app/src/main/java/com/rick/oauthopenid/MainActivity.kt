@@ -1,13 +1,13 @@
 package com.rick.oauthopenid
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.net.toUri
 import com.rick.oauthopenid.ui.AuthFlowScreen
 import com.rick.oauthopenid.ui.AuthFlowViewModel
 import com.rick.oauthopenid.ui.theme.OAuthOpenIDTheme
@@ -52,12 +52,12 @@ class MainActivity : ComponentActivity() {
         CustomTabsIntent.Builder()
             .setShowTitle(true)
             .build()
-            .launchUrl(this, Uri.parse(url))
+            .launchUrl(this, url.toUri())
     }
 
     private fun handlePossibleRedirect(intent: Intent?) {
         val data = intent?.data ?: return
-        val expected = Uri.parse(viewModel.uiState.config.redirectUri)
+        val expected = viewModel.uiState.config.redirectUri.toUri()
         // Align with the manifest intent-filter and exact redirect-URI guidance: scheme + host.
         if (data.scheme == expected.scheme && data.host == expected.host) {
             viewModel.onRedirect(data.toString())
