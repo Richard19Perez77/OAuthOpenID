@@ -1,9 +1,9 @@
 package com.rick.oauthopenid.ui
 
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,7 +17,6 @@ import com.rick.oauthopenid.oauth.TokenResponse
 import com.rick.oauthopenid.oauth.ValidationCheck
 import kotlinx.coroutines.launch
 import org.json.JSONArray
-import androidx.core.net.toUri
 
 enum class StepStatus { Idle, Running, Done, Failed }
 
@@ -186,7 +185,7 @@ class AuthFlowViewModel(
             completeStep(
                 key = Steps.PKCE,
                 message = "The verifier never leaves the device until step 5. Only its hash goes " +
-                    "out through the browser.",
+                        "out through the browser.",
                 fields = listOf(
                     StepField("code_verifier (secret)", request.codeVerifier),
                     StepField("code_challenge = SHA256(verifier)", request.codeChallenge),
@@ -199,7 +198,7 @@ class AuthFlowViewModel(
             completeStep(
                 key = Steps.AUTHORIZE,
                 message = "Opening the system browser via Custom Tabs — never a WebView, so the " +
-                    "provider keeps its own cookies and the user can see the real URL bar.",
+                        "provider keeps its own cookies and the user can see the real URL bar.",
                 fields = listOf(StepField("Authorization URL", request.url)),
             )
 
@@ -237,8 +236,8 @@ class AuthFlowViewModel(
             failStep(
                 Steps.REDIRECT,
                 "OAuth session was lost (app was killed while the browser was open). " +
-                    "Start sign-in again — the authorization code cannot be redeemed without " +
-                    "the PKCE verifier and state saved from this device.",
+                        "Start sign-in again — the authorization code cannot be redeemed without " +
+                        "the PKCE verifier and state saved from this device.",
             )
             clearPersistedAuthSession()
             return
@@ -276,7 +275,7 @@ class AuthFlowViewModel(
                 failStep(
                     key = Steps.REDIRECT,
                     message = "state mismatch — expected '${request.state}', got '$returnedState'. " +
-                        "Aborting: this response did not come from our request.",
+                            "Aborting: this response did not come from our request.",
                 )
                 clearPersistedAuthSession()
                 return@launch
@@ -285,7 +284,7 @@ class AuthFlowViewModel(
             completeStep(
                 key = Steps.REDIRECT,
                 message = "state matched, so this really is the response to our request. The code " +
-                    "is single-use and useless without the verifier.",
+                        "is single-use and useless without the verifier.",
                 fields = listOf(
                     StepField("Redirect URI received", redirectUri),
                     StepField("code (one-time)", code),
@@ -310,7 +309,9 @@ class AuthFlowViewModel(
                 message = "Tokens arrived over a direct HTTPS call. They never touched the browser.",
                 fields = listOfNotNull(
                     StepField("token_type", tokenResponse.tokenType ?: "(none)"),
-                    StepField("expires_in", tokenResponse.expiresIn?.let { "$it seconds" } ?: "(none)"),
+                    StepField(
+                        "expires_in",
+                        tokenResponse.expiresIn?.let { "$it seconds" } ?: "(none)"),
                     StepField("scope", tokenResponse.scope ?: "(none)"),
                     StepField("access_token", tokenResponse.accessToken ?: "(none)"),
                     tokenResponse.refreshToken?.let { StepField("refresh_token", it) },
@@ -388,7 +389,7 @@ class AuthFlowViewModel(
         completeStep(
             key = Steps.ID_TOKEN,
             message = "Anyone can read this — a JWT is encoded, not encrypted. Nothing here is " +
-                "trustworthy until step 7 checks the signature.",
+                    "trustworthy until step 7 checks the signature.",
             fields = listOf(
                 StepField("Header", jwt.prettyHeader()),
                 StepField("Payload (claims)", jwt.prettyPayload()),
@@ -454,7 +455,7 @@ class AuthFlowViewModel(
                 completeStep(
                     key = Steps.API,
                     message = "The API validated the token itself. It never saw a password, and " +
-                        "it does not care who we are beyond what the token allows.",
+                            "it does not care who we are beyond what the token allows.",
                     fields = listOfNotNull(
                         StepField("GET ${OidcConfig.DEMO_API}", response),
                         userInfo?.let { StepField("UserInfo endpoint", it) },
@@ -488,7 +489,7 @@ class AuthFlowViewModel(
             completeStep(
                 key = Steps.TOKEN,
                 message = "Refreshed with no user interaction. Note the new refresh token — the " +
-                    "previous one is now retired.",
+                        "previous one is now retired.",
                 fields = listOfNotNull(
                     StepField("expires_in", refreshed.expiresIn?.let { "$it seconds" } ?: "(none)"),
                     StepField("New access_token", refreshed.accessToken ?: "(none)"),
@@ -559,7 +560,8 @@ class AuthFlowViewModel(
         return OidcConfig(
             issuer = issuer,
             clientId = savedStateHandle.get<String>(KEY_CLIENT_ID) ?: OidcConfig.DEMO.clientId,
-            redirectUri = savedStateHandle.get<String>(KEY_REDIRECT_URI) ?: OidcConfig.DEMO.redirectUri,
+            redirectUri = savedStateHandle.get<String>(KEY_REDIRECT_URI)
+                ?: OidcConfig.DEMO.redirectUri,
             scope = savedStateHandle.get<String>(KEY_SCOPE) ?: OidcConfig.DEMO.scope,
         )
     }
